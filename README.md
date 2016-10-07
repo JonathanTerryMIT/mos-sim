@@ -1,7 +1,9 @@
 # mos-sim
 ##MOSFET Simulation
 
-Simulation of MOSFETs based on the simplified all-region model. By Subhajit Ray and Jonathan Terry.
+Simulation of MOSFETs based on the simplified all-region model. 
+
+By Subhajit Ray and Jonathan Terry.
 
 **Model Features:**
   1. Effectively Mobility Dependence on Bias
