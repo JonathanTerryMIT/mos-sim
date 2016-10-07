@@ -1,0 +1,99 @@
+#!/usr/bin/python
+
+# To access file system and allow for switches
+import os, sys
+import argparse
+
+# Numerical methods libaries and plotting
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy.optimize import newton
+
+
+from test_suite import test
+
+##-------------------Command Line Interface----------------------------------
+
+'''
+MOS-SIM Executable
+
+This file conatins the main function for the MOS-SIM Executable.
+To run this file file with the appropriate tests, run
+
+"mos-sim test"
+
+To run a custom sweep run the follwing, and follow the on-screen instructions. 
+
+"mos-sim"
+
+'''
+
+def main(argv):
+
+	parser = argparse.ArgumentParser(description='MOSFET Simulation Code.')
+	parser.add_argument('-t', '--test', help='Run tests.', action="store_true")
+	args = parser.parse_args()
+
+	if args.test:
+
+		pot = surfacePotential(2, 0.9, 1, 0.47, 0.5)
+		print pot
+		
+
+##-------------------Constants (Global Variables)----------------------------
+
+q = 1.602*(10**(-19))			# Coulombs
+epsilonSi = 1.05*(10**(-12)) 	# Semiconductor Units
+thermalVoltage = 0.026 			# Volts
+
+##-------------------Source Code (as opposed to Drain Code)------------------
+
+
+'''
+Function to calculate the MOSFET drain to source current.
+
+sourceBody: 	float 	representing the sourceBody bias
+drainSource: 	float	representing drainSource voltage bias
+gateSource: 	float 	representing gateSource votlage bias
+
+'''
+def model(sourceBody, drainSource, gateSource):
+	##TODO
+	return 
+
+
+def diffusionCurrent():
+	##TODO
+	return
+
+def driftCurrent():
+	##TODO
+	return
+
+# Direct calculation of surface potential via newton-raphson
+def surfacePotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
+
+	return newton(implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff), 0)
+
+# Implicit anonymous function
+def implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
+
+	return lambda x: gateBody - flatband - x - bodyCoeff*np.sqrt(x + thermalVoltage*np.exp((x - 2*fermiPotential - contactBody)/thermalVoltage))
+
+'''
+Function to plot MOSFET data.
+
+sourceBody: 	float 	representing the sourceBody bias
+drainSource: 	2-tuple representing drainSource voltage range
+gateSource: 	2-tuple representing gateSource votlage range
+
+'''
+def plotModel(sourceBody, drainSourceRange, gateSourceRange):
+	return
+
+
+
+
+
+if __name__ == "__main__":
+   main(sys.argv[1:])
