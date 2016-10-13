@@ -36,8 +36,9 @@ def main(argv):
 
 	if args.test:
 
-		pot = surfacePotential(2, 0.9, 1, 0.47, 0.5)
-		print pot
+		pot = surfacePotential(1.8, -0.8, 1, 0.47, 0.5)
+		implPot = implicitPotential(1.8, -0.8, 1, 0.47, 0.5)
+		print implPot(pot)
 		
 
 ##-------------------Constants (Global Variables)----------------------------
@@ -45,6 +46,7 @@ def main(argv):
 q = 1.602*(10**(-19))			# Coulombs
 epsilonSi = 1.05*(10**(-12)) 	# Semiconductor Units
 thermalVoltage = 0.026 			# Volts
+intrinsicCarriers = 10**10		# cm^-3
 
 ##-------------------Source Code (as opposed to Drain Code)------------------
 
@@ -57,40 +59,62 @@ drainSource: 	float	representing drainSource voltage bias
 gateSource: 	float 	representing gateSource votlage bias
 
 '''
-def model(sourceBody, drainSource, gateSource):
-	##TODO
-	return 
+
+class MOSFET(object):
+
+	def __init__(flatband, acceptorDoping, oxideThickness, width, length, mobility, dataPoints = 1000):
+
+		# Given parameters
+		self.flatband = flatband
+		self.width = width
+		self.length = length
+		self.mobility = mobility
+
+		# Derived parameters
+		self.fermiPotential = thermalVoltage*np.log(acceptorDoping/intrinsicCarriers)
+		self.bodyCoeff = 0.53*(oxideThickness/10.0)*np.sqrt(acceptorDoping/(10**17))
+
+		# Default simulation parameters
+		self.dataPoints = dataPoints
 
 
-def diffusionCurrent():
-	##TODO
-	return
+	def model(sourceBody, drainSource, gateSource):
+		
+		self.gateBody = gateSource + sourceBody
 
-def driftCurrent():
-	##TODO
-	return
+		drainSourceRange = np.linspace(drainSource[0], drainSource[1], self.dataPoints)
+	
+		return 
 
-# Direct calculation of surface potential via newton-raphson
-def surfacePotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
+	def diffusionCurrent():
+		##TODO
+		return
 
-	return newton(implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff), 0)
+	def driftCurrent():
+		##TODO
+		return
 
-# Implicit anonymous function
-def implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
+	# Direct calculation of surface potential via newton-raphson
+	def surfacePotential(contactBody):
 
-	return lambda x: gateBody - flatband - x - bodyCoeff*np.sqrt(x + thermalVoltage*np.exp((x - 2*fermiPotential - contactBody)/thermalVoltage))
+		return newton(implicitPotential(self.gateBody, self.flatband, contactBody, self.fermiPotential, self.bodyCoeff), 0)
 
-'''
-Function to plot MOSFET data.
+	# Implicit anonymous function
+	def implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
 
-sourceBody: 	float 	representing the sourceBody bias
-drainSource: 	2-tuple representing drainSource voltage range
-gateSource: 	2-tuple representing gateSource votlage range
+		return lambda x: gateBody - flatband - x - bodyCoeff*np.sqrt(x + thermalVoltage*np.exp((x - 2*fermiPotential - contactBody)/thermalVoltage))
 
-'''
-def plotModel(sourceBody, drainSourceRange, gateSourceRange):
-	return
 
+	'''
+	Function to plot MOSFET data.
+
+	sourceBody: 	float 	representing the sourceBody bias
+	drainSource: 	2-tuple representing drainSource voltage range
+	gateSource: 	2-tuple representing gateSource votlage range
+
+	'''
+	def plotModel(sourceBody, drainSourceRange, gateSourceRange):
+		return
 
 
 
