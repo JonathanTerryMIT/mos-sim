@@ -36,10 +36,12 @@ def main(argv):
 
 	if args.test:
 
-		pot = surfacePotential(1.8, -0.8, 1, 0.47, 0.5)
-		implPot = implicitPotential(1.8, -0.8, 1, 0.47, 0.5)
-		print implPot(pot)
-		
+		# Instantiate a new FET
+		mosfet = MOSFET(-0.8, 5*(10**17), 2.5, 10.0, 10.0, 400)
+
+		# Model it
+		mosfet.model(0.0, [0, 2.5], [1.8])
+
 
 ##-------------------Constants (Global Variables)----------------------------
 
@@ -48,11 +50,11 @@ epsilonSi = 1.05*(10**(-12)) 	# Semiconductor Units
 thermalVoltage = 0.026 			# Volts
 intrinsicCarriers = 10**10		# cm^-3
 
+
 ##-------------------Source Code (as opposed to Drain Code)------------------
 
-
 '''
-Function to calculate the MOSFET drain to source current.
+MOSFET Class
 
 sourceBody: 	float 	representing the sourceBody bias
 drainSource: 	float	representing drainSource voltage bias
@@ -62,7 +64,7 @@ gateSource: 	float 	representing gateSource votlage bias
 
 class MOSFET(object):
 
-	def __init__(flatband, acceptorDoping, oxideThickness, width, length, mobility, dataPoints = 1000):
+	def __init__(self, flatband, acceptorDoping, oxideThickness, width, length, mobility, dataPoints = 1000):
 
 		# Given parameters
 		self.flatband = flatband
@@ -71,6 +73,7 @@ class MOSFET(object):
 		self.mobility = mobility
 
 		# Derived parameters
+		self.oxideCapacitance = epsilonSi / (oxideThickness*(10**-7))
 		self.fermiPotential = thermalVoltage*np.log(acceptorDoping/intrinsicCarriers)
 		self.bodyCoeff = 0.53*(oxideThickness/10.0)*np.sqrt(acceptorDoping/(10**17))
 
@@ -78,31 +81,79 @@ class MOSFET(object):
 		self.dataPoints = dataPoints
 
 
-	def model(sourceBody, drainSource, gateSource):
-		
-		self.gateBody = gateSource + sourceBody
+	def model(self, sourceBody, drainSource, gateSource):
 
 		drainSourceRange = np.linspace(drainSource[0], drainSource[1], self.dataPoints)
+		psiRange = np.linspace(drainSource[0] + sourceBody, drainSource[1] + sourceBody, self.dataPoints)
+
+		diffVectorized = np.vectorize(self.diffusionCurrent)
+		driftVectorized = np.vectorize(self.driftCurrent)
+
+		drainSourceCurrents = []
+
+		for i in range(len(gateSource)):
+
+			# Redefine voltages
+			self.sourceBody = sourceBody
+			self.gateBody = gateSource[i] + sourceBody
+
+			# Calculate and memoize surface potentials
+			self.calculateSeriesExpansion(psiRange)
+
+			# Compute current compoenents and graph
+			diff = diffVectorized(self.potentials)
+			drift = driftVectorized(self.potentials)
+
+			drainSourceCurrent = np.add(diff, drift)
+
+			drainSourceCurrents.append(drainSourceCurrent)
+
+		for i in range(len(drainSourceCurrents)):
+			plt.plot(drainSourceRange, drainSourceCurrents[i])
+
+		plt.show()
 	
 		return 
 
-	def diffusionCurrent():
-		##TODO
-		return
+	def diffusionCurrent(self, psiL):
+		
+		mobilityComponent = (self.width/self.length)*self.mobility*self.oxideCapacitance*self.alpha*thermalVoltage
+		drainComponent = psiL - self.potentials[0]
 
-	def driftCurrent():
-		##TODO
-		return
+		return mobilityComponent*drainComponent
+
+	def driftCurrent(self, psiL):
+		
+		mobilityComponent = (self.width/self.length)*self.mobility*self.oxideCapacitance
+		thresholdComponent = self.gateBody - self.flatband - self.expansion - self.bodyCoeff*np.sqrt(self.expansion)
+		drainComponent = psiL - self.potentials[0]
+
+		return mobilityComponent*thresholdComponent*drainComponent
 
 	# Direct calculation of surface potential via newton-raphson
-	def surfacePotential(contactBody):
+	def surfacePotential(self, contactBody):
 
-		return newton(implicitPotential(self.gateBody, self.flatband, contactBody, self.fermiPotential, self.bodyCoeff), 0)
+		self.contactBody = contactBody
+		return newton(self.implicitPotential, 0, maxiter=10000)
 
 	# Implicit anonymous function
-	def implicitPotential(gateBody, flatband, contactBody, fermiPotential, bodyCoeff):
+	def implicitPotential(self, psi):
 
-		return lambda x: gateBody - flatband - x - bodyCoeff*np.sqrt(x + thermalVoltage*np.exp((x - 2*fermiPotential - contactBody)/thermalVoltage))
+		return self.gateBody - self.flatband - psi - self.bodyCoeff*np.sqrt(psi + thermalVoltage*np.exp((psi - 2*self.fermiPotential - self.contactBody)/thermalVoltage))
+
+	def calculateSeriesExpansion(self, psiRange):
+
+		spVectorized = np.vectorize(self.surfacePotential)
+
+		self.potentials = spVectorized(psiRange)
+		self.expansion = (self.potentials[-1] + self.potentials[0])/2.0
+		self.alpha = 1.0 + (self.bodyCoeff/(2.0*np.sqrt(self.expansion)))
+
+		a = self.surfacePotential(0.1)
+		b = self.implicitPotential(a)
+		print a, b
+
+		return
 
 
 	'''
@@ -113,7 +164,7 @@ class MOSFET(object):
 	gateSource: 	2-tuple representing gateSource votlage range
 
 	'''
-	def plotModel(sourceBody, drainSourceRange, gateSourceRange):
+	def plotModel(self, sourceBody, drainSourceRange, gateSourceRange):
 		return
 
 
