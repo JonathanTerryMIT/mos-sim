@@ -32,23 +32,26 @@ def main(argv):
 
 	parser = argparse.ArgumentParser(description='MOSFET Simulation Code.')
 	parser.add_argument('-t', '--test', help='Run tests.', action="store_true")
+	parser.add_argument('-v', '--verbose', help='Print debug info to console.', action="store_true")
 	args = parser.parse_args()
 
 	if args.test:
 
 		# Instantiate a new FET
-		mosfet = MOSFET(-0.8, 5*(10**17), 2.5, 10.0, 10.0, 400)
+		mosfet = MOSFET(-0.8, 5e17, 2.5, 10.0, 10.0, 400, verbose = args.verbose)
 
 		# Model it
-		mosfet.model(0.0, [0, 2.5], [1.8])
+		mosfet.model(0.0, [0, 2.5], [0.6, 0.9, 1.2, 1.5, 1.8])
+		mosfet.plotModel()
 
 
 ##-------------------Constants (Global Variables)----------------------------
 
-q = 1.602*(10**(-19))			# Coulombs
-epsilonSi = 1.05*(10**(-12)) 	# Semiconductor Units
+q = 1.602e-19					# Coulombs
+epsilonSi = 1.05e-12		 	# Semiconductor Units
 thermalVoltage = 0.026 			# Volts
-intrinsicCarriers = 10**10		# cm^-3
+intrinsicCarriers = 1e10		# cm^-3
+milliampScale = 1000			# mA/A
 
 
 ##-------------------Source Code (as opposed to Drain Code)------------------
@@ -64,7 +67,7 @@ gateSource: 	float 	representing gateSource votlage bias
 
 class MOSFET(object):
 
-	def __init__(self, flatband, acceptorDoping, oxideThickness, width, length, mobility, dataPoints = 1000):
+	def __init__(self, flatband, acceptorDoping, oxideThickness, width, length, mobility, verbose = False, dataPoints = 250):
 
 		# Given parameters
 		self.flatband = flatband
@@ -73,23 +76,30 @@ class MOSFET(object):
 		self.mobility = mobility
 
 		# Derived parameters
-		self.oxideCapacitance = epsilonSi / (oxideThickness*(10**-7))
+		self.oxideCapacitance = epsilonSi / (oxideThickness*(1e-7))
 		self.fermiPotential = thermalVoltage*np.log(acceptorDoping/intrinsicCarriers)
-		self.bodyCoeff = 0.53*(oxideThickness/10.0)*np.sqrt(acceptorDoping/(10**17))
+		self.bodyCoeff = 0.53*(oxideThickness/10.0)*np.sqrt(acceptorDoping/(1e17))
 
 		# Default simulation parameters
+		self.verbose = verbose
 		self.dataPoints = dataPoints
+
+		# Storage parameters
+		self.drainSourceCurrents = []
+
+		if self.verbose:
+			self.printSimulationParameters()
 
 
 	def model(self, sourceBody, drainSource, gateSource):
 
-		drainSourceRange = np.linspace(drainSource[0], drainSource[1], self.dataPoints)
+		# Create the range needed
+		self.drainSourceRange = np.linspace(drainSource[0], drainSource[1], self.dataPoints)
 		psiRange = np.linspace(drainSource[0] + sourceBody, drainSource[1] + sourceBody, self.dataPoints)
 
+		# Invoke vector processing
 		diffVectorized = np.vectorize(self.diffusionCurrent)
 		driftVectorized = np.vectorize(self.driftCurrent)
-
-		drainSourceCurrents = []
 
 		for i in range(len(gateSource)):
 
@@ -97,63 +107,60 @@ class MOSFET(object):
 			self.sourceBody = sourceBody
 			self.gateBody = gateSource[i] + sourceBody
 
-			# Calculate and memoize surface potentials
-			self.calculateSeriesExpansion(psiRange)
+			# Print relevant information
+			if self.verbose:
+				print "[+] Running simulation sweep for gate-body voltage of: " + str(self.gateBody)
 
-			# Compute current compoenents and graph
+			# Calculate and memoize surface potentials
+			self.potentials = np.vectorize(self.surfacePotential)(psiRange)
+
+			# Compute current components and graph
 			diff = diffVectorized(self.potentials)
 			drift = driftVectorized(self.potentials)
-
 			drainSourceCurrent = np.add(diff, drift)
 
-			drainSourceCurrents.append(drainSourceCurrent)
-
-		for i in range(len(drainSourceCurrents)):
-			plt.plot(drainSourceRange, drainSourceCurrents[i])
-
-		plt.show()
+			self.drainSourceCurrents.append(drainSourceCurrent)
 	
-		return 
+		return
 
 	def diffusionCurrent(self, psiL):
+
+		expansion = (psiL + self.potentials[0])/2.0
+		alpha = 1.0 + (self.bodyCoeff/(2.0*np.sqrt(expansion)))
 		
-		mobilityComponent = (self.width/self.length)*self.mobility*self.oxideCapacitance*self.alpha*thermalVoltage
+		mobilityComponent = (self.width/self.length)*self.mobility*self.oxideCapacitance*alpha*thermalVoltage
 		drainComponent = psiL - self.potentials[0]
 
-		return mobilityComponent*drainComponent
+		return milliampScale*mobilityComponent*drainComponent
 
 	def driftCurrent(self, psiL):
+
+		expansion = (psiL + self.potentials[0])/2.0
 		
 		mobilityComponent = (self.width/self.length)*self.mobility*self.oxideCapacitance
-		thresholdComponent = self.gateBody - self.flatband - self.expansion - self.bodyCoeff*np.sqrt(self.expansion)
+		thresholdComponent = self.gateBody - self.flatband - expansion - self.bodyCoeff*np.sqrt(expansion)
 		drainComponent = psiL - self.potentials[0]
 
-		return mobilityComponent*thresholdComponent*drainComponent
+		return milliampScale*mobilityComponent*thresholdComponent*drainComponent
 
 	# Direct calculation of surface potential via newton-raphson
 	def surfacePotential(self, contactBody):
 
 		self.contactBody = contactBody
-		return newton(self.implicitPotential, 0, maxiter=10000)
+		
+		# Attempt to speed up calculations
+		try:
+			guess = self.potentials[-1]
+		
+		except:
+			guess = 1
+
+		return newton(self.implicitPotential, guess)
 
 	# Implicit anonymous function
 	def implicitPotential(self, psi):
 
 		return self.gateBody - self.flatband - psi - self.bodyCoeff*np.sqrt(psi + thermalVoltage*np.exp((psi - 2*self.fermiPotential - self.contactBody)/thermalVoltage))
-
-	def calculateSeriesExpansion(self, psiRange):
-
-		spVectorized = np.vectorize(self.surfacePotential)
-
-		self.potentials = spVectorized(psiRange)
-		self.expansion = (self.potentials[-1] + self.potentials[0])/2.0
-		self.alpha = 1.0 + (self.bodyCoeff/(2.0*np.sqrt(self.expansion)))
-
-		a = self.surfacePotential(0.1)
-		b = self.implicitPotential(a)
-		print a, b
-
-		return
 
 
 	'''
@@ -164,10 +171,26 @@ class MOSFET(object):
 	gateSource: 	2-tuple representing gateSource votlage range
 
 	'''
-	def plotModel(self, sourceBody, drainSourceRange, gateSourceRange):
+	def plotModel(self):
+
+		for i in range(len(self.drainSourceCurrents)):
+			plt.plot(self.drainSourceRange, self.drainSourceCurrents[i])
+
+		plt.show()
+
 		return
 
+	def printSimulationParameters(self):
 
+		# Compute any useful parameters here
+		phi = self.flatband + 2*self.fermiPotential + 6*thermalVoltage + self.bodyCoeff*np.sqrt(2*self.fermiPotential + 6*thermalVoltage)
+		
+		# Print them
+		print "[+] MOSFET initialized with the following parameters:"
+		print "\t[-] Oxide Capacitance: " + str(self.oxideCapacitance)
+		print "\t[-] Fermi Potential: " + str(self.fermiPotential)
+		print "\t[-] Body Effect Coefficient: " + str(self.bodyCoeff)
+		print "\t[-] Approximate threshold for strong inversion: " + str(phi)
 
 
 if __name__ == "__main__":

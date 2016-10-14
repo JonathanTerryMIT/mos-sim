@@ -4,4 +4,10 @@ import numpy as np
 
 def test():
 
-	print "Tests to be determined..."
+	data = np.loadtxt('../data/W25000L1000', skiprows=2)
+
+	print data
+
+def rmsError():
+
+	return
